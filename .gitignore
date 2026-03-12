@@ -1,0 +1,57 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Testing
+coverage/
+
+# Next.js
+.next/
+out/
+
+# Production
+build/
+dist/
+
+# Env files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env*.local
+
+# OS Metadata
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# IDEs
+.vscode/
+.idea/
+.project
+.classpath
+.settings/
+
+# Blockchain/Hardhat residuals
+cache/
+artifacts/
+typechain/
+typechain-types/
+ignition/deployments/chain-31337
+hardhat.config.js
+hardhat.config.ts
+
+# Misc
+*.pem
+push.sh
+push_changes.sh
+template/
+test/
