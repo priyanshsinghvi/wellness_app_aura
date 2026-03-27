@@ -7,6 +7,11 @@ export interface IChatMessage {
   metadata?: {
     analysis?: any;
     currentGoal?: string | null;
+    sentiment?: {
+      label: string;           // "POSITIVE" | "NEGATIVE" | "NEUTRAL"
+      score: number;           // 0.0 to 1.0 — confidence of the label
+      crisisTriggered: boolean; // true if NEGATIVE score > 0.85
+    };
     progress?: {
       emotionalState?: string;
       riskLevel?: number;
@@ -30,6 +35,11 @@ const chatMessageSchema = new Schema<IChatMessage>({
   metadata: {
     analysis: Schema.Types.Mixed,
     currentGoal: String,
+    sentiment: {              // NEW — stores HuggingFace sentiment result
+      label: String,          // "POSITIVE", "NEGATIVE", or "NEUTRAL"
+      score: Number,          // e.g. 0.9231
+      crisisTriggered: Boolean, // true if high distress detected
+    },
     progress: {
       emotionalState: String,
       riskLevel: Number,
