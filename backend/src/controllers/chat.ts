@@ -8,6 +8,55 @@ import { User } from "../models/User";
 import { InngestSessionResponse, InngestEvent } from "../types/inngest";
 import { Types } from "mongoose";
 
+// ─── SENTIMENT ANALYSIS FUNCTION ───────────────────────────
+// This calls HuggingFace's free API to analyze the emotion
+// in a user's message. Returns a label (POSITIVE/NEGATIVE/NEUTRAL)
+// and a confidence score between 0 and 1.
+
+const analyzeSentiment = async (text: string) => {
+  try {
+    const response = await fetch(
+      "https://router.huggingface.co/hf-inference/models/cardiffnlp/twitter-roberta-base-sentiment-latest",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.HF_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ inputs: text }),
+      }
+    );
+
+    const result = await response.json();
+
+    // HuggingFace returns an array of arrays like:
+    // [[{label: "POSITIVE", score: 0.92}, {label: "NEGATIVE", score: 0.05}, ...]]
+    // We flatten it and find the highest scoring label
+    const scores = Array.isArray(result[0]) ? result[0] : result;
+    const top = scores.sort((a: any, b: any) => b.score - a.score)[0];
+    const topLabel = top?.label ? top.label.toUpperCase() : "NEUTRAL";
+
+    // Crisis is triggered if sentiment is very negative (score above 0.85)
+    const crisisTriggered = topLabel === "NEGATIVE" && top?.score > 0.85;
+
+    return {
+      label: topLabel,   // POSITIVE, NEGATIVE, or NEUTRAL
+      score: parseFloat((top?.score || 0).toFixed(4)),  // e.g. 0.9231
+      crisisTriggered,                  // true if high distress detected
+    };
+
+  } catch (error) {
+    // If HuggingFace fails, we don't crash the app
+    // We just return a neutral default and log the warning
+    logger.warn("HuggingFace sentiment analysis failed:", error);
+    return {
+      label: "NEUTRAL",
+      score: 0,
+      crisisTriggered: false,
+    };
+  }
+};
+// ────────────────────────────────────────────────────────────
 // Initialize OpenAI API
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -61,7 +110,23 @@ export const sendMessage = async (req: Request, res: Response) => {
   try {
     const { sessionId } = req.params;
     const { message } = req.body;
+    // Run sentiment analysis on the user's message
+    // This happens before the AI response is generated
+    const sentimentResult = await analyzeSentiment(message);
+    logger.info(`Sentiment detected: ${sentimentResult.label} (score: ${sentimentResult.score})`);
+
     const userId = new Types.ObjectId(req.user.id);
+
+    // If crisis is detected, log a warning
+    // In future you can add email alerts or emergency resource triggers here
+    if (sentimentResult.crisisTriggered) {
+      logger.warn("CRISIS DETECTED via sentiment analysis", {
+        userId: userId.toString(),
+        sessionId,
+        sentimentScore: sentimentResult.score,
+        message: message.substring(0, 50), // log only first 50 chars for privacy
+      });
+    }
 
     logger.info("Processing message:", { sessionId, message });
 
@@ -158,8 +223,8 @@ export const sendMessage = async (req: Request, res: Response) => {
         model: "gpt-4o",
         messages: [
           { role: "system", content: event.data.systemPrompt || "You are an AI therapist assistant." },
-          { 
-            role: "user", 
+          {
+            role: "user",
             content: `Based on the following context, generate a therapeutic response:
             Message: ${message}
             Analysis: ${JSON.stringify(analysis)}
@@ -192,6 +257,9 @@ export const sendMessage = async (req: Request, res: Response) => {
       role: "user",
       content: message,
       timestamp: new Date(),
+      metadata: {
+        sentiment: sentimentResult,  // saves label, score, crisisTriggered
+      },
     });
 
     session.messages.push({
